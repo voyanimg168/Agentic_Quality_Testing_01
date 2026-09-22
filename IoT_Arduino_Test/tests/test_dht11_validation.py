@@ -2,9 +2,21 @@ import serial
 import time
 import re
 import pytest
+import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Load environment variables from .env
+from dotenv import load_dotenv
+
+# Load .env from parent directory (IoT_Arduino_Test/)
+env_path = Path(__file__).parent.parent / '.env'
+load_dotenv(env_path)
+
+ARDUINO_PORT = os.getenv('ARDUINO_PORT', '/dev/cu.usbmodem21301')
 
 class SerialReader:
-    def __init__(self, port='COM3', baudrate=9600, timeout=2):
+    def __init__(self, port=ARDUINO_PORT, baudrate=9600, timeout=2):
         """Initialize serial connection to Arduino"""
         self.port = port
         self.baudrate = baudrate
@@ -16,6 +28,7 @@ class SerialReader:
         try:
             self.ser = serial.Serial(self.port, self.baudrate, timeout=self.timeout)
             time.sleep(2)  # Wait for Arduino to reset
+            print(f"Connected to Arduino on port {self.port}")
             return True
         except Exception as e:
             print(f"Failed to connect to {self.port}: {e}")
@@ -34,7 +47,7 @@ class SerialReader:
         
         while len(readings) < num_readings and (time.time() - start_time) < timeout:
             line = self.read_line()
-            if line and "Temp:" in line:
+            if line and "Temperature:" in line:
                 readings.append(line)
                 time.sleep(0.1)
         
@@ -47,9 +60,9 @@ class SerialReader:
 
 class DHT11Validator:
     @staticmethod
-    def extract_temp(reading):
+    def extract_temperature(reading):
         """Extract temperature from serial reading"""
-        match = re.search(r'Temp: ([\d.]+)', reading)
+        match = re.search(r'Temperature: ([\d.]+)', reading)
         return float(match.group(1)) if match else None
     
     @staticmethod
@@ -65,9 +78,9 @@ class DHT11Validator:
         return float(match.group(1)) if match else None
 
 # Test Cases
-def test_dht11_temp_range():
+def test_dht11_temperature_range():
     """TC-001: Temperature readings within valid range"""
-    reader = SerialReader(port='COM3')  # Change COM3 to your port
+    reader = SerialReader(port=ARDUINO_PORT)  # Change COM3 to your port
     assert reader.connect(), "Failed to connect to Arduino"
     
     readings = reader.read_multiple(num_readings=5)
@@ -76,15 +89,15 @@ def test_dht11_temp_range():
     assert len(readings) > 0, "No readings received from Arduino"
     
     for reading in readings:
-        temp = DHT11Validator.extract_temp(reading)
-        assert temp is not None, f"Could not parse temp from: {reading}"
-        assert -40 <= temp <= 80, f"Temperature {temp}°C out of valid range"
+        temperature = DHT11Validator.extract_temperature(reading)
+        assert temperature is not None, f"Could not parse temperature from: {reading}"
+        assert -40 <= temperature <= 80, f"Temperature {temperature}°C out of valid range"
     
     print(f"✓ TC-001 PASS: {len(readings)} valid temperature readings")
 
 def test_dht11_humidity_range():
     """TC-002: Humidity readings within valid range"""
-    reader = SerialReader(port='COM3')
+    reader = SerialReader(port=ARDUINO_PORT)
     assert reader.connect(), "Failed to connect to Arduino"
     
     readings = reader.read_multiple(num_readings=5)
@@ -99,7 +112,7 @@ def test_dht11_humidity_range():
 
 def test_dht11_update_frequency():
     """TC-003: Sensor updates every 2 seconds"""
-    reader = SerialReader(port='COM3')
+    reader = SerialReader(port=ARDUINO_PORT)
     assert reader.connect(), "Failed to connect to Arduino"
     
     start = time.time()
@@ -117,20 +130,20 @@ def test_dht11_update_frequency():
 
 def test_sensor_consistency():
     """TC-005: Multiple readings show consistent data"""
-    reader = SerialReader(port='COM3')
+    reader = SerialReader(port=ARDUINO_PORT)
     assert reader.connect(), "Failed to connect to Arduino"
     
     readings = reader.read_multiple(num_readings=5)
     reader.close()
     
-    temps = [DHT11Validator.extract_temp(r) for r in readings]
-    temps = [t for t in temps if t is not None]
+    temperatures = [DHT11Validator.extract_temperature(r) for r in readings]
+    temperatures = [t for t in temperatures if t is not None]
     
     # Temperature shouldn't vary wildly between reads
-    temp_range = max(temps) - min(temps)
-    assert temp_range < 5, f"Temp variance {temp_range}°C too high (sensor unstable?)"
+    temperature_range = max(temperatures) - min(temperatures   )
+    assert temperature_range < 5, f"Temperature variance {temperature_range}°C too high (sensor unstable?)"
     
-    print(f"✓ TC-005 PASS: Temperature stable, variance = {temp_range:.2f}°C")
+    print(f"✓ TC-005 PASS: Temperature stable, variance = {temperature_range:.2f}°C")
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "-s"])
